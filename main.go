@@ -1,9 +1,7 @@
 package main
 
 import (
-	// "encoding/binary"
 	"bufio"
-	// "container/heap"
 	"fmt"
 	"log"
 	"math"
@@ -17,40 +15,19 @@ var rowSize int
 var hamInts []uint64
 
 type Vertex struct {
-	val       uint64
-	leader    *Vertex
-	followers []*Vertex
+	val    uint64
+	leader *Vertex
+	rank   int
 }
 
 func (v Vertex) String() string {
 
-	var followers []uint64
-
-	for _, x := range v.followers {
-		followers = append(followers, x.val)
-	}
-
-	return fmt.Sprintf("\nval:\t%v\nLeader:\t%v\nFollowerr:\t%v\n\n\n",
-		v.val, v.leader.val, followers)
+	return fmt.Sprintf("\nval:\t%vLeader:\t%vRank:\t%v",
+		v.val, v.leader.val, v.rank)
 }
 
 var Vertices = make(map[uint64]*Vertex, numOfRows)
 var LeaderMap = make(map[uint64]*Vertex, numOfRows)
-
-// SetShortestEdge sets the shortest edge for v
-func (v *Vertex) ConsumeFollowers(w *Vertex) {
-
-	w.leader = v
-
-	for _, x := range w.followers {
-		x.leader = v
-		v.followers = append(v.followers, x)
-	}
-
-	w.followers = nil
-
-	delete(LeaderMap, w.val)
-}
 
 func main() {
 
@@ -60,15 +37,12 @@ func main() {
 
 	cluster()
 
-	// fmt.Println(Vertices)
-
 	fmt.Println(len(LeaderMap))
 
 }
 
 func readFile(filename string) {
-
-	file, err := os.Open(filename) //should read in file named in CLI
+	file, err := os.Open(filename)
 
 	if err != nil {
 		log.Fatal(err)
@@ -80,38 +54,26 @@ func readFile(filename string) {
 
 	// Scan first line
 	if scanner.Scan() {
-
 		firstLine := strings.Fields(scanner.Text())
-
 		numOfRows, err = strconv.Atoi(firstLine[0])
-
 		rowSize, err = strconv.Atoi(firstLine[1])
-
 		if err != nil {
 			log.Fatalf("couldn't convert number: %v\n", err)
 		}
-
 	}
 
 	for scanner.Scan() {
 
-		//remove spaces
 		thisLine := strings.Replace(scanner.Text(), " ", "", -1)
-
-		//convert to uint
 		l, err := strconv.ParseUint(thisLine, 2, rowSize)
 
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		//create Vertex
-		v := &Vertex{l, nil, math.Inf(1), true, nil, []*Vertex{}, -1}
-		v.shortestEdge = v
+		v := &Vertex{l, nil, 0}
 		v.leader = v
-		v.followers = append(v.followers, v)
 
-		//add Vertex to Vertices
 		_, ok := Vertices[l]
 
 		if !ok {
@@ -125,19 +87,18 @@ func readFile(filename string) {
 	}
 }
 
+// Cluster Vertices based on max hamming distance
+// defined by inverse hamming values.
 func cluster() {
 	for _, x := range Vertices {
 		for _, h := range hamInts {
-
 			w, ok := Vertices[x.val^h]
-
 			if ok {
-				if x.leader != w.leader {
-					if len(x.leader.followers) > len(w.leader.followers) {
-						x.leader.ConsumeFollowers(w.leader)
-					} else {
-						w.leader.ConsumeFollowers(x.leader)
-					}
+				xl := FindAndUpdate(x)
+				wl := FindAndUpdate(w)
+
+				if xl != wl {
+					Union(xl, wl)
 				}
 			}
 		}
@@ -145,12 +106,37 @@ func cluster() {
 }
 
 func TwoDegreeHamInts(s int) {
-
 	for i := 0; i < s; i++ {
 		hamInts = append(hamInts, uint64(math.Pow(2, float64(i))))
 
 		for j := s - 1; j >= 0; j-- {
 			hamInts = append(hamInts, uint64(math.Pow(2, float64(i))+math.Pow(2, float64(j))))
 		}
+	}
+}
+
+// FindAndUpdate performs a Union-Find find operations
+// while implementing Union by Rank path compression
+func FindAndUpdate(x *Vertex) *Vertex {
+	if x.leader == x {
+		return x
+	}
+	x.leader = FindAndUpdate(x.leader)
+	return x.leader
+}
+
+// Union performs Union-Find union operations
+// implementing Union by Rank
+func Union(x, y *Vertex) {
+	switch {
+	case x.rank < y.rank:
+		x.leader = y
+		delete(LeaderMap, x.val)
+	case x.rank == y.rank:
+		x.rank++
+		fallthrough
+	case x.rank > y.rank:
+		y.leader = x
+		delete(LeaderMap, y.val)
 	}
 }
